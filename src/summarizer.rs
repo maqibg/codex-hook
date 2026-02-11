@@ -34,11 +34,8 @@ pub async fn generate(cfg: &Config, client: &reqwest::Client, content: &str) -> 
     let body = serde_json::json!({
         "model": cfg.ai_model,
         "messages": [
-            { "role": "system", "content": "你是摘要助手。要求：\n1. 输出简洁中文摘要，以浓缩易懂为首要目标，不必写满字数上限\n2. 使用纯文本，禁止使用 Markdown 格式（不要用 # ** `` 等标记）\n3. 如有多个要点用序号列出，每个序号独占一行\n4. 不加任何前缀（如\"摘要：\"）和后缀" },
-            { "role": "user", "content": format!(
-                "用中文总结以下内容，不超过{}字，突出关键操作和结果：\n\n{}",
-                cfg.ai_max_words, truncated
-            )}
+            { "role": "system", "content": cfg.ai_system_prompt },
+            { "role": "user", "content": cfg.ai_user_prompt.replace("{max_words}", &cfg.ai_max_words.to_string()).replace("{content}", &truncated) }
         ],
         "max_tokens": 800,
         "temperature": 0.3
