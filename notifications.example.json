@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "enabled": false,
+  "debug": false,
+  "local": {
+    "desktop_enabled": true,
+    "voice_enabled": true,
+    "voice": {
+      "complete": "Codex任务完成",
+      "confirm": "需要权限确认",
+      "idle": "等待你的输入",
+      "elicitation": "需要输入信息",
+      "warning": "任务遇到问题"
+    }
+  },
+  "events": {
+    "complete": true,
+    "confirm": true,
+    "warning": true
+  },
+  "message": {
+    "include_raw": false,
+    "raw_max_chars": 500
+  },
+  "telegram": {
+    "enabled": false,
+    "api_base_url": "https://api.telegram.org",
+    "proxy_url": "",
+    "timeout_ms": 5000,
+    "instances": [
+      {
+        "name": "default",
+        "enabled": false,
+        "bot_token": "",
+        "chat_id": ""
+      }
+    ]
+  },
+  "feishu": {
+    "enabled": false,
+    "proxy_url": "",
+    "timeout_ms": 5000,
+    "instances": [
+      {
+        "name": "default",
+        "enabled": false,
+        "webhook_url": ""
+      }
+    ]
+  },
+  "ai_summary": {
+    "enabled": false,
+    "base_url": "https://api.deepseek.com",
+    "api_key": "",
+    "model": "deepseek-chat",
+    "proxy_url": "",
+    "timeout_ms": 5000,
+    "max_input_chars": 4000,
+    "max_output_chars": 500,
+    "system_prompt": "你是摘要助手。请输出简洁中文纯文本摘要，突出关键操作和结果；不要使用 Markdown，不添加摘要前缀或后缀。",
+    "user_prompt": "用中文总结以下内容，不超过 {max_output_chars} 字：\n\n{content}"
+  }
+}

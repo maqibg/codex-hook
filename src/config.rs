@@ -1,130 +1,173 @@
-use std::collections::HashSet;
+pub use crate::config_types::{
+    AiSummaryConfig, Config, FeishuInstance, TelegramConfig, TelegramInstance,
+};
+use crate::event::EventKind;
+use crate::legacy_config::from_legacy_env;
 use std::env;
+use std::path::{Path, PathBuf};
 
-#[derive(Clone)]
-pub struct Channel {
-    pub ch_type: String, // "telegram" | "feishu"
-    pub name: String,
-    pub token: Option<String>,
-    pub chat_id: Option<String>,
-    pub webhook_url: Option<String>,
-}
+impl Config {
+    pub fn load(legacy_complete_voice: &str) -> Result<Self, String> {
+        if let Some(path) = find_near_executable("notifications.json") {
+            let content = std::fs::read_to_string(&path)
+                .map_err(|_| format!("无法读取通知配置：{}", path.display()))?;
+            let config: Config = serde_json::from_str(&content)
+                .map_err(|error| format!("通知配置 JSON 无效：{error}"))?;
+            config.validate()?;
+            return Ok(config);
+        }
 
-#[derive(Clone)]
-pub struct Config {
-    pub debug: bool,
-    pub proxy: String,
-    pub ai_enable: bool,
-    pub ai_api_key: String,
-    pub ai_base_url: String,
-    pub ai_model: String,
-    pub ai_max_words: usize,
-    pub ai_system_prompt: String,
-    pub ai_user_prompt: String,
-    pub win_notify_enable: bool,
-    pub voice_enable: bool,
-    pub voice_stop: String,
-    pub channels: Vec<Channel>,
-}
-
-fn env_path() -> std::path::PathBuf {
-    let exe_dir = env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf()));
-    if let Some(ref dir) = exe_dir {
-        // exe 同目录
-        let p = dir.join(".env");
-        if p.exists() { return p; }
-        // 项目根（target/release/../../.env）
-        let p = dir.join("../../.env");
-        if p.exists() { return p; }
+        let _ = dotenvy::from_path(
+            find_near_executable(".env").unwrap_or_else(|| PathBuf::from(".env")),
+        );
+        Ok(from_legacy_env(legacy_complete_voice))
     }
-    std::path::PathBuf::from(".env")
+
+    pub fn remote_enabled_for(&self, event: EventKind) -> bool {
+        self.enabled && self.events.enabled_for(event)
+    }
+
+    pub fn ready_telegram_instances(&self) -> Vec<TelegramInstance> {
+        if !self.telegram.enabled {
+            return Vec::new();
+        }
+        self.telegram
+            .instances
+            .iter()
+            .filter(|item| item.enabled && !item.bot_token.is_empty() && !item.chat_id.is_empty())
+            .cloned()
+            .collect()
+    }
+
+    pub fn ready_feishu_instances(&self) -> Vec<FeishuInstance> {
+        if !self.feishu.enabled {
+            return Vec::new();
+        }
+        self.feishu
+            .instances
+            .iter()
+            .filter(|item| item.enabled && !item.webhook_url.is_empty())
+            .cloned()
+            .collect()
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        if self.version != 1 {
+            return Err("通知配置 version 目前只支持 1".to_string());
+        }
+        validate_timeout("telegram.timeout_ms", self.telegram.timeout_ms)?;
+        validate_timeout("feishu.timeout_ms", self.feishu.timeout_ms)?;
+        validate_timeout("ai_summary.timeout_ms", self.ai_summary.timeout_ms)?;
+        if self.message.raw_max_chars > 4_000 {
+            return Err("message.raw_max_chars 必须在 0 到 4000 之间".to_string());
+        }
+        if !(100..=100_000).contains(&self.ai_summary.max_input_chars) {
+            return Err("ai_summary.max_input_chars 必须在 100 到 100000 之间".to_string());
+        }
+        if !(20..=4_000).contains(&self.ai_summary.max_output_chars) {
+            return Err("ai_summary.max_output_chars 必须在 20 到 4000 之间".to_string());
+        }
+        validate_http_url("telegram.api_base_url", &self.telegram.api_base_url, false)?;
+        validate_proxy_url("telegram.proxy_url", &self.telegram.proxy_url)?;
+        validate_proxy_url("feishu.proxy_url", &self.feishu.proxy_url)?;
+        validate_http_url("ai_summary.base_url", &self.ai_summary.base_url, false)?;
+        validate_proxy_url("ai_summary.proxy_url", &self.ai_summary.proxy_url)?;
+        for item in self
+            .feishu
+            .instances
+            .iter()
+            .filter(|item| !item.webhook_url.is_empty())
+        {
+            validate_http_url("feishu.instances[].webhook_url", &item.webhook_url, false)?;
+        }
+        Ok(())
+    }
 }
 
-fn parse_channels() -> Vec<Channel> {
-    let mut prefixes = HashSet::new();
-    for key in env::vars().map(|(k, _)| k) {
-        if let Some(rest) = key.strip_prefix("TG_").or_else(|| key.strip_prefix("FS_")) {
-            let prefix_type = if key.starts_with("TG_") { "TG" } else { "FS" };
-            if let Some(idx) = rest.split('_').next() {
-                if idx.chars().all(|c| c.is_ascii_digit()) {
-                    prefixes.insert(format!("{}_{}", prefix_type, idx));
-                }
+fn find_near_executable(file_name: &str) -> Option<PathBuf> {
+    if let Ok(executable) = env::current_exe()
+        && let Some(directory) = executable.parent()
+    {
+        for path in [
+            directory.join(file_name),
+            directory.join("../../").join(file_name),
+        ] {
+            if path.is_file() {
+                return Some(path);
             }
         }
     }
+    let current = Path::new(file_name);
+    current.is_file().then(|| current.to_path_buf())
+}
 
-    let g = |prefix: &str, key: &str| -> String {
-        env::var(format!("{prefix}_{key}")).unwrap_or_default()
-    };
+fn validate_timeout(path: &str, value: u64) -> Result<(), String> {
+    if (100..=60_000).contains(&value) {
+        Ok(())
+    } else {
+        Err(format!("{path} 必须在 100 到 60000 之间"))
+    }
+}
 
-    let mut channels = Vec::new();
-    for id in &prefixes {
-        let enable = g(id, "ENABLE");
-        if enable == "false" || enable.is_empty() { continue; }
+fn validate_http_url(path: &str, value: &str, allow_empty: bool) -> Result<(), String> {
+    if allow_empty && value.is_empty() {
+        return Ok(());
+    }
+    let url = reqwest::Url::parse(value).map_err(|_| format!("{path} 不是有效 URL"))?;
+    if matches!(url.scheme(), "http" | "https") {
+        Ok(())
+    } else {
+        Err(format!("{path} 只支持 http 或 https"))
+    }
+}
 
-        let ch_type = if id.starts_with("TG") { "telegram" } else { "feishu" };
-        let idx = id.split('_').nth(1).unwrap_or("0");
-        let ch = Channel {
-            ch_type: ch_type.to_string(),
-            name: { let n = g(id, "NAME"); if n.is_empty() { format!("{ch_type}-{idx}") } else { n } },
-            token: non_empty(g(id, "TOKEN")),
-            chat_id: non_empty(g(id, "CHAT_ID")),
-            webhook_url: non_empty(g(id, "WEBHOOK_URL")),
+fn validate_proxy_url(path: &str, value: &str) -> Result<(), String> {
+    if value.is_empty() {
+        return Ok(());
+    }
+    let url = reqwest::Url::parse(value).map_err(|_| format!("{path} 不是有效代理 URL"))?;
+    if matches!(url.scheme(), "http" | "https" | "socks5" | "socks5h") {
+        Ok(())
+    } else {
+        Err(format!("{path} 使用了不支持的代理协议"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config_types::EventConfig;
+
+    #[test]
+    fn partial_json_uses_safe_defaults() {
+        let config: Config = serde_json::from_str(r#"{"version":1,"enabled":true}"#).unwrap();
+        assert!(config.local.desktop_enabled);
+        assert!(!config.telegram.enabled);
+        assert!(!config.message.include_raw);
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn event_switch_maps_waiting_events_to_confirm() {
+        let events = EventConfig {
+            complete: true,
+            confirm: false,
+            warning: true,
         };
-
-        // 校验
-        let mut ok = true;
-        if ch_type == "telegram" {
-            if ch.token.is_none() { eprintln!("[codex-hook] {id}_TOKEN 未配置"); ok = false; }
-            if ch.chat_id.is_none() { eprintln!("[codex-hook] {id}_CHAT_ID 未配置"); ok = false; }
-        } else if ch.webhook_url.is_none() {
-            eprintln!("[codex-hook] {id}_WEBHOOK_URL 未配置"); ok = false;
-        }
-        if ok { channels.push(ch); }
+        assert!(!events.enabled_for(EventKind::Idle));
+        assert!(!events.enabled_for(EventKind::Elicitation));
+        assert!(events.enabled_for(EventKind::Warning));
     }
-    channels
-}
 
-fn non_empty(s: String) -> Option<String> {
-    if s.is_empty() { None } else { Some(s) }
-}
-
-fn env_or(key: &str, default: &str) -> String {
-    env::var(key).unwrap_or_else(|_| default.to_string())
-}
-
-impl Config {
-    pub fn load() -> Self {
-        let _ = dotenvy::from_path(env_path());
-
-        let cfg = Config {
-            debug: env_or("DEBUG", "false") == "true",
-            proxy: env::var("HTTPS_PROXY").or_else(|_| env::var("HTTP_PROXY")).unwrap_or_default(),
-            ai_enable: env_or("AI_ENABLE", "true") != "false",
-            ai_api_key: env_or("AI_API_KEY", ""),
-            ai_base_url: env_or("AI_BASE_URL", "https://api.deepseek.com"),
-            ai_model: env_or("AI_MODEL", "deepseek-chat"),
-            ai_max_words: env_or("AI_MAX_WORDS", "500").parse().unwrap_or(500),
-            ai_system_prompt: env_or("AI_SYSTEM_PROMPT", "你是摘要助手。要求：\n1. 输出简洁中文摘要，以浓缩易懂为首要目标，不必写满字数上限\n2. 使用纯文本，禁止使用 Markdown 格式（不要用 # ** `` 等标记）\n3. 如有多个要点用序号列出，每个序号独占一行\n4. 不加任何前缀（如\"摘要：\"）和后缀"),
-            ai_user_prompt: env_or("AI_USER_PROMPT", "用中文总结以下内容，不超过{max_words}字，突出关键操作和结果：\n\n{content}"),
-            win_notify_enable: env_or("WIN_NOTIFY_ENABLE", "true") != "false",
-            voice_enable: env_or("VOICE_ENABLE", "true") != "false",
-            voice_stop: env_or("VOICE_STOP", "Codex任务完成"),
-            channels: parse_channels(),
-        };
-        if cfg.debug {
-            eprintln!("[codex-hook] proxy={}, channels={}", if cfg.proxy.is_empty() { "(空)" } else { &cfg.proxy }, cfg.channels.len());
-        }
-        cfg
+    #[test]
+    fn invalid_limits_and_urls_are_rejected_without_echoing_secrets() {
+        let mut config = Config::default();
+        config.message.raw_max_chars = 4_001;
+        assert!(config.validate().unwrap_err().contains("raw_max_chars"));
+        config.message.raw_max_chars = 500;
+        config.telegram.api_base_url = "file:///secret".to_string();
+        let error = config.validate().unwrap_err();
+        assert!(error.contains("telegram.api_base_url"));
+        assert!(!error.contains("secret"));
     }
-}
-
-pub fn build_http_client(proxy: &str) -> reqwest::Client {
-    let mut builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(15));
-    if !proxy.is_empty() {
-        if let Ok(p) = reqwest::Proxy::all(proxy) {
-            builder = builder.proxy(p);
-        }
-    }
-    builder.build().unwrap_or_else(|_| reqwest::Client::new())
 }

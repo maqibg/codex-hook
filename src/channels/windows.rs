@@ -1,5 +1,4 @@
 use std::process::Command;
-use crate::config::Config;
 
 pub fn notify(title: &str, message: &str) {
     let msg = if message.chars().count() > 200 {
@@ -15,14 +14,15 @@ pub fn notify(title: &str, message: &str) {
         .show();
 }
 
-/// 语音播报
-pub fn speak(cfg: &Config) {
-    if !cfg.voice_enable || cfg.voice_stop.is_empty() { return; }
+pub fn speak(text: &str) {
+    if text.is_empty() {
+        return;
+    }
+    let escaped = text.replace('\'', "''");
     let script = format!(
-        "Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('{}')",
-        cfg.voice_stop
+        "Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('{escaped}')"
     );
-    let _ = Command::new("powershell")
+    let _ = Command::new("powershell.exe")
         .args(["-NoProfile", "-Command", &script])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())

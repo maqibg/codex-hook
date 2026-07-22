@@ -1,41 +1,86 @@
-use crate::config::Channel;
+use crate::config::FeishuInstance;
+use crate::event::{EventKind, RenderedNotification};
+use crate::http::{RequestError, response_json};
+use crate::summarizer::truncate_chars;
 
-pub async fn send(client: &reqwest::Client, ch: &Channel, title: &str, summary: &str, raw: Option<&str>, extra: Option<&str>) -> Result<(), String> {
-    let url = ch.webhook_url.as_deref().ok_or("missing webhook_url")?;
-
+pub fn build_card(notification: &RenderedNotification) -> serde_json::Value {
     let mut elements = vec![
-        serde_json::json!({ "tag": "div", "text": { "content": format!("**AI 摘要**\n{summary}"), "tag": "lark_md" } }),
+        serde_json::json!({ "tag": "div", "text": { "content": truncate_chars(&notification.summary, 4000), "tag": "plain_text" } }),
     ];
-    if let Some(r) = raw {
-        let truncated: String = r.chars().take(500).collect();
+    if !notification.raw.is_empty() {
         elements.push(serde_json::json!({ "tag": "hr" }));
-        elements.push(serde_json::json!({ "tag": "div", "text": { "content": "**原始输出**", "tag": "lark_md" } }));
         elements.push(serde_json::json!({
             "tag": "note",
-            "elements": [{ "tag": "plain_text", "content": truncated }]
+            "elements": [{ "tag": "plain_text", "content": truncate_chars(&notification.raw, 4000) }]
         }));
     }
-    if let Some(e) = extra {
+    if let Some(extra) = &notification.extra {
         elements.push(serde_json::json!({ "tag": "hr" }));
-        elements.push(serde_json::json!({ "tag": "div", "text": { "content": e, "tag": "lark_md" } }));
+        elements.push(
+            serde_json::json!({ "tag": "div", "text": { "content": extra, "tag": "plain_text" } }),
+        );
     }
     elements.push(serde_json::json!({ "tag": "note", "elements": [{ "tag": "plain_text", "content": "codex-hook" }] }));
-
-    let body = serde_json::json!({
+    let template = match notification.event {
+        EventKind::Complete => "green",
+        EventKind::Warning => "orange",
+        EventKind::Confirm | EventKind::Idle | EventKind::Elicitation => "yellow",
+    };
+    serde_json::json!({
         "msg_type": "interactive",
         "card": {
             "config": { "wide_screen_mode": true },
-            "header": { "template": "green", "title": { "content": title, "tag": "plain_text" } },
+            "header": { "template": template, "title": { "content": truncate_chars(&notification.title, 200), "tag": "plain_text" } },
             "elements": elements,
         }
-    });
+    })
+}
 
-    let resp = client.post(url).json(&body).send().await.map_err(|e| e.to_string())?;
-    let data = resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())?;
+pub async fn send(
+    client: &reqwest::Client,
+    instance: &FeishuInstance,
+    notification: &RenderedNotification,
+) -> Result<(), RequestError> {
+    let response = client
+        .post(&instance.webhook_url)
+        .json(&build_card(notification))
+        .send()
+        .await
+        .map_err(|_| RequestError::new("request-failed"))?;
+    let data = response_json(response).await?;
     let code = data.get("code").and_then(|v| v.as_i64()).unwrap_or(-1);
-    let status = data.get("StatusCode").and_then(|v| v.as_i64()).unwrap_or(-1);
+    let status = data
+        .get("StatusCode")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(-1);
     if code != 0 && status != 0 {
-        return Err(format!("飞书 API: {data}"));
+        return Err(RequestError::new("feishu-api-rejected"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn warning_card_uses_orange_plain_text() {
+        let card = build_card(&RenderedNotification {
+            event: EventKind::Warning,
+            title: "警告".to_string(),
+            summary: "<unsafe>".to_string(),
+            raw: String::new(),
+            extra: None,
+        });
+        assert_eq!(
+            card.pointer("/card/header/template")
+                .and_then(|value| value.as_str()),
+            Some("orange")
+        );
+        assert_eq!(
+            card.pointer("/card/elements/0/text/tag")
+                .and_then(|value| value.as_str()),
+            Some("plain_text")
+        );
+    }
 }
