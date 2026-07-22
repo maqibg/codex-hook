@@ -1,0 +1,73 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+
+      - name: Verify
+        shell: pwsh
+        run: |
+          cargo fmt -- --check
+          cargo test --locked
+          cargo clippy --locked -- -D warnings
+
+      - name: Build release binary
+        shell: pwsh
+        run: cargo build --locked --release
+
+      - name: Package
+        id: package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = '${{ github.ref_name }}'
+          $archive = "codex-hook-$tag-windows-x64.zip"
+          $checksum = "$archive.sha256"
+          Compress-Archive -LiteralPath @(
+            'target/release/codex-hook.exe',
+            '.env.example',
+            'README.md',
+            'NOTICE'
+          ) -DestinationPath $archive -CompressionLevel Optimal -Force
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+          Set-Content -LiteralPath $checksum -Value "$hash  $archive" -Encoding ascii
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "archive=$archive" -Encoding utf8
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "checksum=$checksum" -Encoding utf8
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $tag = '${{ github.ref_name }}'
+          $archive = '${{ steps.package.outputs.archive }}'
+          $checksum = '${{ steps.package.outputs.checksum }}'
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $archive $checksum --repo $env:GITHUB_REPOSITORY --clobber
+          } else {
+            gh release create $tag $archive $checksum --repo $env:GITHUB_REPOSITORY --verify-tag --title $tag --generate-notes
+          }
+          if ($LASTEXITCODE -ne 0) {
+            throw "GitHub Release 发布失败，退出码：$LASTEXITCODE"
+          }

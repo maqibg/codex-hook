@@ -47,3 +47,13 @@ pub async fn response_json(response: reqwest::Response) -> Result<Value, Request
     }
     serde_json::from_slice(&bytes).map_err(|_| RequestError::new("invalid-json-response"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn client_accepts_proxy_with_custom_local_port() {
+        assert!(build_client("http://127.0.0.1:7890", 5_000).is_ok());
+    }
+}

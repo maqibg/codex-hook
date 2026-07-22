@@ -1,17 +1,13 @@
 use crate::event::EventKind;
-use serde::Deserialize;
 
 pub const DEFAULT_SYSTEM_PROMPT: &str = "你是摘要助手。请输出简洁中文纯文本摘要，突出关键操作和结果；不要使用 Markdown，不添加摘要前缀或后缀。";
 pub const DEFAULT_USER_PROMPT: &str =
     "用中文总结以下内容，不超过 {max_output_chars} 字：\n\n{content}";
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
+#[derive(Clone, Debug, Default)]
 pub struct Config {
-    pub version: u32,
     pub enabled: bool,
     pub debug: bool,
-    pub min_duration_seconds: u64,
     pub local: LocalConfig,
     pub events: EventConfig,
     pub message: MessageConfig,
@@ -20,16 +16,14 @@ pub struct Config {
     pub ai_summary: AiSummaryConfig,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
+#[derive(Clone, Debug)]
 pub struct LocalConfig {
     pub desktop_enabled: bool,
     pub voice_enabled: bool,
     pub voice: VoiceMessages,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
+#[derive(Clone, Debug)]
 pub struct VoiceMessages {
     pub complete: String,
     pub confirm: String,
@@ -38,23 +32,20 @@ pub struct VoiceMessages {
     pub warning: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
+#[derive(Clone, Debug)]
 pub struct EventConfig {
     pub complete: bool,
     pub confirm: bool,
     pub warning: bool,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
+#[derive(Clone, Debug)]
 pub struct MessageConfig {
     pub include_raw: bool,
     pub raw_max_chars: usize,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
+#[derive(Clone, Debug)]
 pub struct TelegramConfig {
     pub enabled: bool,
     pub api_base_url: String,
@@ -63,8 +54,7 @@ pub struct TelegramConfig {
     pub instances: Vec<TelegramInstance>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Clone, Debug, Default)]
 pub struct TelegramInstance {
     pub name: String,
     pub enabled: bool,
@@ -72,8 +62,7 @@ pub struct TelegramInstance {
     pub chat_id: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
+#[derive(Clone, Debug)]
 pub struct FeishuConfig {
     pub enabled: bool,
     pub proxy_url: String,
@@ -81,16 +70,14 @@ pub struct FeishuConfig {
     pub instances: Vec<FeishuInstance>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Clone, Debug, Default)]
 pub struct FeishuInstance {
     pub name: String,
     pub enabled: bool,
     pub webhook_url: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
+#[derive(Clone, Debug)]
 pub struct AiSummaryConfig {
     pub enabled: bool,
     pub base_url: String,
@@ -102,23 +89,6 @@ pub struct AiSummaryConfig {
     pub max_output_chars: usize,
     pub system_prompt: String,
     pub user_prompt: String,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            version: 1,
-            enabled: false,
-            debug: false,
-            min_duration_seconds: 0,
-            local: LocalConfig::default(),
-            events: EventConfig::default(),
-            message: MessageConfig::default(),
-            telegram: TelegramConfig::default(),
-            feishu: FeishuConfig::default(),
-            ai_summary: AiSummaryConfig::default(),
-        }
-    }
 }
 
 impl Default for LocalConfig {

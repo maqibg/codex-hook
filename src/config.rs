@@ -7,20 +7,13 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 impl Config {
-    pub fn load(legacy_complete_voice: &str) -> Result<Self, String> {
-        if let Some(path) = find_near_executable("notifications.json") {
-            let content = std::fs::read_to_string(&path)
-                .map_err(|_| format!("无法读取通知配置：{}", path.display()))?;
-            let config: Config = serde_json::from_str(&content)
-                .map_err(|error| format!("通知配置 JSON 无效：{error}"))?;
-            config.validate()?;
-            return Ok(config);
-        }
-
+    pub fn load(complete_voice: &str) -> Result<Self, String> {
         let _ = dotenvy::from_path(
             find_near_executable(".env").unwrap_or_else(|| PathBuf::from(".env")),
         );
-        Ok(from_legacy_env(legacy_complete_voice))
+        let config = from_legacy_env(complete_voice);
+        config.validate()?;
+        Ok(config)
     }
 
     pub fn remote_enabled_for(&self, event: EventKind) -> bool {
@@ -52,9 +45,6 @@ impl Config {
     }
 
     fn validate(&self) -> Result<(), String> {
-        if self.version != 1 {
-            return Err("通知配置 version 目前只支持 1".to_string());
-        }
         validate_timeout("telegram.timeout_ms", self.telegram.timeout_ms)?;
         validate_timeout("feishu.timeout_ms", self.feishu.timeout_ms)?;
         validate_timeout("ai_summary.timeout_ms", self.ai_summary.timeout_ms)?;
@@ -139,8 +129,8 @@ mod tests {
     use crate::config_types::EventConfig;
 
     #[test]
-    fn partial_json_uses_safe_defaults() {
-        let config: Config = serde_json::from_str(r#"{"version":1,"enabled":true}"#).unwrap();
+    fn env_config_defaults_are_valid() {
+        let config = Config::default();
         assert!(config.local.desktop_enabled);
         assert!(!config.telegram.enabled);
         assert!(!config.message.include_raw);
@@ -157,6 +147,13 @@ mod tests {
         assert!(!events.enabled_for(EventKind::Idle));
         assert!(!events.enabled_for(EventKind::Elicitation));
         assert!(events.enabled_for(EventKind::Warning));
+    }
+
+    #[test]
+    fn telegram_proxy_accepts_custom_local_port() {
+        let mut config = Config::default();
+        config.telegram.proxy_url = "http://127.0.0.1:7890".to_string();
+        assert!(config.validate().is_ok());
     }
 
     #[test]
