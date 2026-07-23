@@ -35,7 +35,7 @@ notify = ["/path/to/codex-hook.exe"]
 
 `TELEGRAM_PROXY_URL` 支持带自定义端口的 HTTP、HTTPS、SOCKS5 或 SOCKS5H 代理，例如 `http://127.0.0.1:7890`。未设置渠道专用代理时，会兼容回退到旧版 `HTTPS_PROXY` 或 `HTTP_PROXY`。
 
-AI 只对 `agent-turn-complete` 生成摘要，`approval-requested` 使用确定性确认文本；单个远程实例失败不影响其他实例或 Codex。`MESSAGE_INCLUDE_RAW` 默认关闭。
+AI 只对 `agent-turn-complete` 生成摘要，`approval-requested` 使用确定性确认文本；单个远程实例失败不影响其他实例或 Codex。完成通知保持旧版展示：标题使用 `Codex 完成 (HH:mm)`，Telegram/飞书显示“AI 摘要”，并默认附带前 500 字原始输出。
 
 **基础配置：**
 
@@ -50,7 +50,7 @@ AI 只对 `agent-turn-complete` 生成摘要，`approval-requested` 使用确定
 | `EVENT_COMPLETE` | 发送任务完成事件 | `true` |
 | `EVENT_CONFIRM` | 发送权限确认事件 | `true` |
 | `EVENT_WARNING` | 发送警告事件 | `true` |
-| `MESSAGE_INCLUDE_RAW` | 在远程通知中附带原始输出 | `false` |
+| `MESSAGE_INCLUDE_RAW` | 在远程通知中附带原始输出 | `true` |
 | `MESSAGE_RAW_MAX_CHARS` | 原始输出字符上限 | `500` |
 
 **Telegram 网络：**

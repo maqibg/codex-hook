@@ -9,8 +9,24 @@ mod summarizer;
 
 use config::Config;
 use event::{EventKind, NotificationRequest, source_label};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const HOOK_TIMEOUT_SECS: u64 = 10;
+
+fn time_str_from_epoch(epoch_seconds: u64) -> String {
+    let total = epoch_seconds + 8 * 60 * 60;
+    let hour = (total % 86_400) / 3_600;
+    let minute = (total % 3_600) / 60;
+    format!("{hour:02}:{minute:02}")
+}
+
+fn now_time_str() -> String {
+    let epoch_seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    time_str_from_epoch(epoch_seconds)
+}
 
 #[derive(serde::Deserialize)]
 struct CodexPayload {
@@ -94,7 +110,7 @@ async fn run() {
             }
             NotificationRequest {
                 event: EventKind::Complete,
-                title: format!("{source} · 任务完成"),
+                title: format!("Codex 完成 ({})", now_time_str()),
                 content: content.to_string(),
                 extra: None,
             }
@@ -198,5 +214,11 @@ mod tests {
         let approval = payload(r#"{"type":"approval-requested","reason":"需要文件权限"}"#);
         assert_eq!(approval.reason.as_deref(), Some("需要文件权限"));
         assert!(!is_subagent_payload(&approval));
+    }
+
+    #[test]
+    fn completion_title_time_uses_utc_plus_eight() {
+        assert_eq!(time_str_from_epoch(0), "08:00");
+        assert_eq!(time_str_from_epoch(17 * 60 * 60 + 28 * 60), "01:28");
     }
 }

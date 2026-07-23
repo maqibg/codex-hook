@@ -4,11 +4,19 @@ use crate::http::{RequestError, response_json};
 use crate::summarizer::truncate_chars;
 
 pub fn build_card(notification: &RenderedNotification) -> serde_json::Value {
-    let mut elements = vec![
-        serde_json::json!({ "tag": "div", "text": { "content": truncate_chars(&notification.summary, 4000), "tag": "plain_text" } }),
-    ];
+    let mut elements = vec![serde_json::json!({
+        "tag": "div",
+        "text": {
+            "content": format!("**AI 摘要**\n{}", truncate_chars(&notification.summary, 3980)),
+            "tag": "lark_md"
+        }
+    })];
     if !notification.raw.is_empty() {
         elements.push(serde_json::json!({ "tag": "hr" }));
+        elements.push(serde_json::json!({
+            "tag": "div",
+            "text": { "content": "**原始输出**", "tag": "lark_md" }
+        }));
         elements.push(serde_json::json!({
             "tag": "note",
             "elements": [{ "tag": "plain_text", "content": truncate_chars(&notification.raw, 4000) }]
@@ -17,7 +25,7 @@ pub fn build_card(notification: &RenderedNotification) -> serde_json::Value {
     if let Some(extra) = &notification.extra {
         elements.push(serde_json::json!({ "tag": "hr" }));
         elements.push(
-            serde_json::json!({ "tag": "div", "text": { "content": extra, "tag": "plain_text" } }),
+            serde_json::json!({ "tag": "div", "text": { "content": extra, "tag": "lark_md" } }),
         );
     }
     elements.push(serde_json::json!({ "tag": "note", "elements": [{ "tag": "plain_text", "content": "codex-hook" }] }));
@@ -64,12 +72,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn warning_card_uses_orange_plain_text() {
+    fn warning_card_uses_orange_and_legacy_sections() {
         let card = build_card(&RenderedNotification {
             event: EventKind::Warning,
             title: "警告".to_string(),
             summary: "<unsafe>".to_string(),
-            raw: String::new(),
+            raw: "原始内容".to_string(),
             extra: None,
         });
         assert_eq!(
@@ -80,7 +88,17 @@ mod tests {
         assert_eq!(
             card.pointer("/card/elements/0/text/tag")
                 .and_then(|value| value.as_str()),
-            Some("plain_text")
+            Some("lark_md")
+        );
+        assert_eq!(
+            card.pointer("/card/elements/0/text/content")
+                .and_then(|value| value.as_str()),
+            Some("**AI 摘要**\n<unsafe>")
+        );
+        assert_eq!(
+            card.pointer("/card/elements/2/text/content")
+                .and_then(|value| value.as_str()),
+            Some("**原始输出**")
         );
     }
 }

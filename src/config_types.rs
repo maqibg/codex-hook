@@ -1,8 +1,8 @@
 use crate::event::EventKind;
 
-pub const DEFAULT_SYSTEM_PROMPT: &str = "你是摘要助手。请输出简洁中文纯文本摘要，突出关键操作和结果；不要使用 Markdown，不添加摘要前缀或后缀。";
+pub const DEFAULT_SYSTEM_PROMPT: &str = "你是摘要助手。要求：\n1. 输出简洁中文摘要，以浓缩易懂为首要目标，不必写满字数上限\n2. 使用纯文本，禁止使用 Markdown 格式（不要用 # ** `` 等标记）\n3. 如有多个要点用序号列出，每个序号独占一行\n4. 不加任何前缀（如\"摘要：\"）和后缀";
 pub const DEFAULT_USER_PROMPT: &str =
-    "用中文总结以下内容，不超过 {max_output_chars} 字：\n\n{content}";
+    "用中文总结以下内容，不超过{max_output_chars}字，突出关键操作和结果：\n\n{content}";
 
 #[derive(Clone, Debug, Default)]
 pub struct Config {
@@ -148,7 +148,7 @@ impl EventConfig {
 impl Default for MessageConfig {
     fn default() -> Self {
         Self {
-            include_raw: false,
+            include_raw: true,
             raw_max_chars: 500,
         }
     }

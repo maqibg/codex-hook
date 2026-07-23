@@ -41,7 +41,7 @@ pub fn from_legacy_env(complete_voice: &str) -> Config {
             warning: env_bool("EVENT_WARNING", true),
         },
         message: MessageConfig {
-            include_raw: env_bool("MESSAGE_INCLUDE_RAW", false),
+            include_raw: env_bool("MESSAGE_INCLUDE_RAW", true),
             raw_max_chars: env_usize("MESSAGE_RAW_MAX_CHARS", 500),
         },
         telegram: TelegramConfig {

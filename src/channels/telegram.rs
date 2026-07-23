@@ -29,7 +29,7 @@ fn escape_within(value: &str, maximum: usize) -> String {
 pub fn build_message(notification: &RenderedNotification) -> String {
     const MAXIMUM: usize = 4_000;
     let title = format!("<b>{}</b>", escape_within(&notification.title, 500));
-    let summary_prefix = "\n\n<b>摘要：</b>\n";
+    let summary_prefix = "\n\n<b>AI 摘要：</b>\n";
     let extra = notification
         .extra
         .as_ref()
@@ -108,6 +108,7 @@ mod tests {
             extra: None,
         });
         assert!(message.starts_with("<b>&lt;Project &amp; Agent&gt;</b>"));
+        assert!(message.contains("<b>AI 摘要：</b>"));
         assert!(message.contains("&lt;raw&gt;"));
         assert!(message.chars().count() <= 4_000);
     }

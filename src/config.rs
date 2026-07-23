@@ -133,7 +133,7 @@ mod tests {
         let config = Config::default();
         assert!(config.local.desktop_enabled);
         assert!(!config.telegram.enabled);
-        assert!(!config.message.include_raw);
+        assert!(config.message.include_raw);
         assert!(config.validate().is_ok());
     }
 
