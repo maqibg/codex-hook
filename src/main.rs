@@ -11,7 +11,8 @@ use config::Config;
 use event::{EventKind, NotificationRequest, source_label};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const HOOK_TIMEOUT_SECS: u64 = 10;
+// 需大于 AI_TIMEOUT_MS 与渠道超时之和，否则 AI 还没返回整个进程就被砍掉
+const HOOK_TIMEOUT_SECS: u64 = 200;
 
 fn time_str_from_epoch(epoch_seconds: u64) -> String {
     let total = epoch_seconds + 8 * 60 * 60;

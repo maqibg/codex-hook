@@ -92,10 +92,10 @@ fn find_near_executable(file_name: &str) -> Option<PathBuf> {
 }
 
 fn validate_timeout(path: &str, value: u64) -> Result<(), String> {
-    if (100..=60_000).contains(&value) {
+    if (100..=300_000).contains(&value) {
         Ok(())
     } else {
-        Err(format!("{path} 必须在 100 到 60000 之间"))
+        Err(format!("{path} 必须在 100 到 300000 之间"))
     }
 }
 
